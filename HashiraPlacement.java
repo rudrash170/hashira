@@ -1,95 +1,34 @@
 import java.util.*;
 import java.math.BigInteger;
+import java.io.File;
+import java.io.FileReader;
+import java.io.BufferedReader;
 
 public class HashiraPlacement {
     
     public static void main(String[] args) {
-        // Test case 1
-        String testCase1 = """
-        {
-            "keys": {
-                "n": 4,
-                "k": 3
-            },
-            "1": {
-                "base": "10",
-                "value": "4"
-            },
-            "2": {
-                "base": "2",
-                "value": "111"
-            },
-            "3": {
-                "base": "10",
-                "value": "12"
-            },
-            "6": {
-                "base": "4",
-                "value": "213"
-            }
+        if (args.length < 1) {
+            System.out.println("Usage: java HashiraPlacement <json-file-path>");
+            return;
         }
-        """;
         
-        // Test case 2
-        String testCase2 = """
-        {
-            "keys": {
-                "n": 10,
-                "k": 7
-            },
-            "1": {
-                "base": "6",
-                "value": "13444211440455345511"
-            },
-            "2": {
-                "base": "15",
-                "value": "aed7015a346d635"
-            },
-            "3": {
-                "base": "15",
-                "value": "6aeeb69631c227c"
-            },
-            "4": {
-                "base": "16",
-                "value": "e1b5e05623d881f"
-            },
-            "5": {
-                "base": "8",
-                "value": "316034514573652620673"
-            },
-            "6": {
-                "base": "3",
-                "value": "2122212201122002221120200210011020220200"
-            },
-            "7": {
-                "base": "3",
-                "value": "20120221122211000100210021102001201112121"
-            },
-            "8": {
-                "base": "6",
-                "value": "20220554335330240002224253"
-            },
-            "9": {
-                "base": "12",
-                "value": "45153788322a1255483"
-            },
-            "10": {
-                "base": "7",
-                "value": "1101613130313526312514143"
-            }
+        String jsonFilePath = args[0];
+        try {
+            String result = solve(jsonFilePath);
+            System.out.println(result);
+        } catch (Exception e) {
+            System.out.println("Error: " + e.getMessage());
+            e.printStackTrace();
         }
-        """;
-        
-        System.out.println(solve(testCase1));
-        System.out.println(solve(testCase2));
     }
     
-    public static BigInteger solve(String jsonInput) {
+    public static String solve(String jsonFilePath) {
         try {
-            Map<String, String> data = parseJson(jsonInput);
+            String jsonContent = readFile(jsonFilePath);
+            Map<String, String> data = parseJson(jsonContent);
             
-            int n = Integer.parseInt(data.get("keys.n"));
-            int k = Integer.parseInt(data.get("keys.k"));
+            int n = Integer.parseInt(data.get("n"));
+            int k = Integer.parseInt(data.get("k"));
             
             List<Point> points = new ArrayList<>();
             
@@ -112,11 +51,103 @@ public class HashiraPlacement {
             List<Point> selectedPoints = points.subList(0, Math.min(k, points.size()));
             
             // Use Lagrange interpolation to find the constant term (secret)
-            return lagrangeInterpolation(selectedPoints, BigInteger.ZERO);
+            BigInteger secret = lagrangeInterpolation(selectedPoints, BigInteger.ZERO);
+            
+            return secret.toString();
             
         } catch (Exception e) {
-            return BigInteger.ZERO;
+            e.printStackTrace();
+            return "0";
         }
+    }
+    
+    public static String readFile(String filePath) throws Exception {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        }
+        return content.toString();
+    }
+    
+    public static Map<String, String> parseJson(String json) {
+        Map<String, String> result = new HashMap<>();
+        
+        try {
+            // Parse n and k
+            int nStart = json.indexOf("\"n\":");
+            if (nStart != -1) {
+                int nValueStart = json.indexOf(":", nStart) + 1;
+                int nValueEnd = json.indexOf(",", nValueStart);
+                if (nValueEnd == -1) nValueEnd = json.indexOf("}", nValueStart);
+                String nValue = json.substring(nValueStart, nValueEnd).trim().replace("\"", "");
+                result.put("n", nValue);
+            }
+            
+            int kStart = json.indexOf("\"k\":");
+            if (kStart != -1) {
+                int kValueStart = json.indexOf(":", kStart) + 1;
+                int kValueEnd = json.indexOf("}", kValueStart);
+                String kValue = json.substring(kValueStart, kValueEnd).trim().replace("\"", "");
+                result.put("k", kValue);
+            }
+            
+            // Parse numbered entries
+            for (int num = 1; num <= 20; num++) {
+                String numKey = "\"" + num + "\":";
+                int numStart = json.indexOf(numKey);
+                if (numStart != -1) {
+                    int objStart = json.indexOf("{", numStart);
+                    int objEnd = findMatchingBrace(json, objStart);
+                    
+                    if (objStart != -1 && objEnd != -1) {
+                        String objectContent = json.substring(objStart + 1, objEnd);
+                        
+                        // Parse base
+                        int baseStart = objectContent.indexOf("\"base\":");
+                        if (baseStart != -1) {
+                            int baseValueStart = objectContent.indexOf(":", baseStart) + 1;
+                            int baseValueEnd = objectContent.indexOf(",", baseValueStart);
+                            if (baseValueEnd == -1) baseValueEnd = objectContent.indexOf("}", baseValueStart);
+                            String baseValue = objectContent.substring(baseValueStart, baseValueEnd)
+                                    .trim().replace("\"", "");
+                            result.put(num + ".base", baseValue);
+                        }
+                        
+                        // Parse value
+                        int valueStart = objectContent.indexOf("\"value\":");
+                        if (valueStart != -1) {
+                            int valueValueStart = objectContent.indexOf(":", valueStart) + 1;
+                            int valueValueEnd = objectContent.indexOf("}", valueValueStart);
+                            String valueValue = objectContent.substring(valueValueStart, valueValueEnd)
+                                    .trim().replace("\"", "");
+                            result.put(num + ".value", valueValue);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("JSON parsing error: " + e.getMessage());
+        }
+        
+        return result;
+    }
+    
+    private static int findMatchingBrace(String str, int start) {
+        int count = 1;
+        for (int i = start + 1; i < str.length(); i++) {
+            if (str.charAt(i) == '{') {
+                count++;
+            } else if (str.charAt(i) == '}') {
+                count--;
+                if (count == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
     }
     
     public static BigInteger convertToDecimal(String value, int base) {
@@ -145,70 +176,17 @@ public class HashiraPlacement {
         return result;
     }
     
-    public static Map<String, String> parseJson(String json) {
-        Map<String, String> result = new HashMap<>();
-        
-        // Remove all whitespace and newlines for easier parsing
-        json = json.replaceAll("\\s+", "");
-        
-        // Parse n and k values
-        String[] nMatch = json.split("\"n\":");
-        if (nMatch.length > 1) {
-            String nValue = nMatch[1].split(",")[0];
-            result.put("keys.n", nValue);
-        }
-        
-        String[] kMatch = json.split("\"k\":");
-        if (kMatch.length > 1) {
-            String kValue = kMatch[1].split("}")[0];
-            result.put("keys.k", kValue);
-        }
-        
-        // Parse numbered entries using regex-like approach
-        for (int i = 1; i <= 20; i++) { // Check up to 20 possible keys
-            String keyPattern = "\"" + i + "\":{";
-            int keyIndex = json.indexOf(keyPattern);
-            if (keyIndex != -1) {
-                int endIndex = json.indexOf("}", keyIndex);
-                if (endIndex != -1) {
-                    String section = json.substring(keyIndex, endIndex + 1);
-                    
-                    // Extract base
-                    String basePattern = "\"base\":\"";
-                    int baseIndex = section.indexOf(basePattern);
-                    if (baseIndex != -1) {
-                        int baseStart = baseIndex + basePattern.length();
-                        int baseEnd = section.indexOf("\"", baseStart);
-                        if (baseEnd != -1) {
-                            String base = section.substring(baseStart, baseEnd);
-                            result.put(i + ".base", base);
-                        }
-                    }
-                    
-                    // Extract value
-                    String valuePattern = "\"value\":\"";
-                    int valueIndex = section.indexOf(valuePattern);
-                    if (valueIndex != -1) {
-                        int valueStart = valueIndex + valuePattern.length();
-                        int valueEnd = section.indexOf("\"", valueStart);
-                        if (valueEnd != -1) {
-                            String value = section.substring(valueStart, valueEnd);
-                            result.put(i + ".value", value);
-                        }
-                    }
-                }
-            }
-        }
-        
-        return result;
-    }
-    
     static class Point {
         BigInteger x, y;
         
         Point(BigInteger x, BigInteger y) {
             this.x = x;
             this.y = y;
+        }
+        
+        @Override
+        public String toString() {
+            return "Point(" + x + ", " + y + ")";
         }
     }
 }
